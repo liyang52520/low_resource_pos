@@ -38,19 +38,12 @@ class Train(CMD):
         subparser.add_argument('--train',
                                default='data/corpus/ptb/train.conll',
                                help='path to train file')
-        subparser.add_argument('--train-labeled',
-                               default='data/corpus/ptb/train.100.conll',
-                               help='path to train file')
         subparser.add_argument('--dev',
                                default='data/corpus/ptb/dev.conll',
                                help='path to dev file')
         subparser.add_argument('--test',
                                default='data/corpus/ptb/test.conll',
                                help='path to test file')
-        subparser.add_argument("--mixed_step",
-                               type=int,
-                               default="1",
-                               help="ration between unsupervised data and supervised data")
 
         return subparser
 
@@ -70,7 +63,6 @@ class Train(CMD):
 
         # load dataset
         self.train_dataset = Dataset(self.fields, args.train)
-        self.train_labeled_dataset = Dataset(self.fields, args.train_labeled)
         self.dev_dataset = Dataset(self.fields, args.dev)
         self.test_dataset = Dataset(self.fields, args.test)
 
@@ -81,14 +73,15 @@ class Train(CMD):
         self.word_field.build(self.train_dataset, args.min_freq, embed)
         self.label_field.build(self.train_dataset)
 
+        # get dictionaries
+
+
         # set the data loaders
         self.train_dataset.build(args.batch_size, n_buckets=args.n_buckets, shuffle=True)
-        self.train_labeled_dataset.build(args.batch_size, n_buckets=args.n_buckets, shuffle=True)
         self.dev_dataset.build(args.batch_size, n_buckets=args.n_buckets)
         self.test_dataset.build(args.batch_size, n_buckets=args.n_buckets)
 
         logger.info(f"Train Dateset {self.train_dataset}")
-        logger.info(f"Train Labeled Dateset {self.train_labeled_dataset}")
         logger.info(f"Dev Dateset {self.dev_dataset}")
         logger.info(f"Test Dateset {self.test_dataset}")
 
@@ -117,30 +110,17 @@ class Train(CMD):
         logger.info(f"Train the Model with Labeled Data")
         self.train(model)
 
-        logger.info(f"Load the Best Model")
-        model = model_class.load(args.model_path)
-
-        if args.model != "crf":
-            logger.info(f"\n\nTrain the Model with Mixed Data")
-            self.train(model, unsupervised=True)
-
         # invert has two steps for training
-        if args.model == "gaussian_hmm" and self.args.invert:
+        if args.model == "gaussian_hmm":
             model = model_class.load(args.model_path)
             model.args.invert = True
-            logger.info(f"Train the Invert with Labeled Data")
             self.train(model)
-            logger.info(f"Load the Best Model")
-            model = model_class.load(args.model_path)
-            logger.info(f"Train the Invert with Mixed Data")
-            self.train(model, unsupervised=True)
 
-    def train(self, model, unsupervised=False):
+    def train(self, model):
         """
 
         Args:
             model:
-            unsupervised
 
         Returns:
 
@@ -162,17 +142,10 @@ class Train(CMD):
             logger.info(f"Epoch {epoch} / {self.args.epochs}:")
             start = datetime.now()
             # train
-            if not unsupervised:
-                self._train_supervised(model,
-                                       self.train_labeled_dataset.loader,
-                                       optimizer,
-                                       scheduler)
-            else:
-                self._train_unsupervised(model,
-                                         self.train_dataset.loader,
-                                         self.train_labeled_dataset.loader,
-                                         optimizer,
-                                         scheduler)
+            self._train_supervised(model,
+                                   self.train_dataset.loader,
+                                   optimizer,
+                                   scheduler)
             # evaluate
             dev_loss, dev_metric = self.evaluate(model, self.dev_dataset.loader)
             logger.info(f"{'dev:':10} Loss: {dev_loss:>8.4f} {dev_metric}")
@@ -221,38 +194,6 @@ class Train(CMD):
             scheduler.step()
             if show:
                 bar.set_postfix_str(f" lr: {scheduler.get_last_lr()[0]:.4e} , loss: {loss.item():.4f}")
-
-    def _train_unsupervised(self, model, unlabeled_loader, labeled_loader, optimizer, scheduler):
-        """
-
-        Args:
-            model ():
-            unlabeled_loader ():
-            labeled_loader ():
-            optimizer ():
-            scheduler ():
-
-        Returns:
-
-        """
-        model.train()
-        bar = progress_bar(unlabeled_loader)
-        count = 0
-        for words, labels in bar:
-            count += 1
-            if count % self.args.mixed_step == 0:
-                self._train_supervised(model, labeled_loader, optimizer, scheduler, False)
-            optimizer.zero_grad()
-            mask = words.ne(self.args.pad_index)
-            # compute loss
-            args = model(words, mask)
-            loss = model.unsupervised_loss(args, mask)
-            loss.backward()
-            #
-            nn.utils.clip_grad_norm_(model.parameters(), self.args.clip)
-            optimizer.step()
-            scheduler.step()
-            bar.set_postfix_str(f" lr: {scheduler.get_last_lr()[0]:.4e} , loss: {loss.item():.4f}")
 
     def evaluate(self, model, loader):
         """
