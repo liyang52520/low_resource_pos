@@ -6,7 +6,7 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
 
 from cmds.cmd import CMD
-from parser.models import CRFAutoEncoder, CRF, VanillaHMM, NeuralHMM, GaussianHMM
+from parser.models import CRFAutoEncoder, CRF, VanillaHMM
 from parser.utils.common import pad, unk
 from parser.utils.data import CoNLL, Dataset, Field, Embedding
 from parser.utils.logging import get_logger, progress_bar
@@ -18,8 +18,6 @@ model_classes = {
     "crf": CRF,
     "crf_ae": CRFAutoEncoder,
     "vanilla_hmm": VanillaHMM,
-    "neural_hmm": NeuralHMM,
-    "gaussian_hmm": GaussianHMM,
 }
 
 
@@ -117,10 +115,9 @@ class Train(CMD):
         logger.info(f"Train the Model with Labeled Data")
         self.train(model)
 
-        logger.info(f"Load the Best Model")
-        model = model_class.load(args.model_path)
-
         if args.model != "crf":
+            logger.info(f"Load the Best Model")
+            model = model_class.load(args.model_path)
             logger.info(f"\n\nTrain the Model with Mixed Data")
             self.train(model, unsupervised=True)
 
