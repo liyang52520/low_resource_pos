@@ -88,7 +88,7 @@ class CRF(nn.Module):
         # [batch_size, seq_len, n_labels]
         emits = self.emit_linear(x)
         # start and end
-        return emits, self.transitions, self.start, self.end
+        return emits,
 
     def supervised_loss(self, args, labels, mask):
         """
@@ -101,11 +101,11 @@ class CRF(nn.Module):
         Returns:
 
         """
-        emits, transitions, start, end = args
+        emits, = args
         batch_size, seq_len = mask.shape
-        log_z = compute_log_z(emits, transitions, start, end, mask)
+        log_z = compute_log_z(emits, self.transitions, self.start, self.end, mask)
         # compute right labels
-        crf_scores = compute_label_scores(emits, transitions, start, end, labels, mask)
+        crf_scores = compute_label_scores(emits, self.transitions, self.start, self.end, labels, mask)
         return (log_z - crf_scores) / batch_size
 
     def predict(self, args, mask):
@@ -118,8 +118,8 @@ class CRF(nn.Module):
         Returns:
 
         """
-        emits, transitions, start, end = args
-        return viterbi(emits, transitions, start, end, mask)
+        emits, = args
+        return viterbi(emits, self.transitions, self.start, self.end, mask)
 
     def save(self, path):
         """
